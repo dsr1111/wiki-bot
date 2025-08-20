@@ -51,6 +51,18 @@ const commands = [
     ]
   },
   {
+    name: '필드',
+    description: '디지몬의 필드를 보여줍니다',
+    options: [
+      {
+        name: '이름',
+        description: '검색할 디지몬의 이름',
+        type: 3, // STRING
+        required: true
+      }
+    ]
+  },
+  {
     name: '도움말',
     description: '사용 가능한 명령어를 보여줍니다'
   }
@@ -72,3 +84,4 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error(error);
   }
 })();
+
