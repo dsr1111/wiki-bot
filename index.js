@@ -1,23 +1,23 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, Events, InteractionType } = require('discord.js');
+const { Client, GatewayIntentBits, Events, InteractionType, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+require('dotenv').config();
 
 // Discord 클라이언트 생성
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// 디지몬 데이터 캐시
-let digimonData = null;
+// 디지몬 데이터 저장 변수
+let digimonData = [];
 
 // 디지몬 데이터 로드 함수
 async function loadDigimonData() {
   try {
-    const response = await axios.get(process.env.DIGIMON_DATA_URL || 'https://media.dsrwiki.com/data/csv/digimon.json');
+    const response = await axios.get(process.env.DIGIMON_DATA_URL);
     digimonData = response.data;
     console.log('디지몬 데이터 로드 완료!');
   } catch (error) {
@@ -25,24 +25,25 @@ async function loadDigimonData() {
   }
 }
 
-// 디지몬 정보 검색 함수
+// 디지몬 검색 함수
 function searchDigimon(query) {
-  if (!digimonData) return null;
-  
-  // 정확한 이름으로 검색
-  if (digimonData[query]) {
-    return { name: query, data: digimonData[query] };
-  }
-  
-  // 부분 일치로 검색
-  const matches = Object.keys(digimonData).filter(name => 
-    name.toLowerCase().includes(query.toLowerCase())
+  const searchQuery = query.toLowerCase();
+  const exactMatch = digimonData.find(digimon => 
+    digimon.name.toLowerCase() === searchQuery
   );
   
-  if (matches.length === 1) {
-    return { name: matches[0], data: digimonData[matches[0]] };
-  } else if (matches.length > 1) {
-    return { suggestions: matches };
+  if (exactMatch) {
+    return { name: exactMatch.name, data: exactMatch };
+  }
+  
+  const partialMatches = digimonData.filter(digimon =>
+    digimon.name.toLowerCase().includes(searchQuery)
+  );
+  
+  if (partialMatches.length > 0) {
+    return {
+      suggestions: partialMatches.slice(0, 10).map(d => d.name)
+    };
   }
   
   return null;
@@ -54,14 +55,14 @@ function createDigimonEmbed(digimonName, digimonData) {
     .setTitle(`🦖 ${digimonName}`)
     .setColor(0x00ff00)
     .setTimestamp();
-  
+
   // 기본 정보
   embed.addFields(
     { name: '진화 단계', value: digimonData.evolution_stage, inline: true },
     { name: '타입', value: digimonData.type, inline: true },
     { name: '레벨', value: digimonData.stats.level.toString(), inline: true }
   );
-  
+
   // 스탯 정보
   const stats = digimonData.stats;
   embed.addFields(
@@ -73,7 +74,7 @@ function createDigimonEmbed(digimonName, digimonData) {
     { name: 'RES', value: stats.RES.toString(), inline: true },
     { name: 'SPD', value: stats.SPD.toString(), inline: true }
   );
-  
+
   // 강점과 약점
   if (digimonData.strengths) {
     embed.addFields({
@@ -82,7 +83,7 @@ function createDigimonEmbed(digimonName, digimonData) {
       inline: true
     });
   }
-  
+
   if (digimonData.weaknesses) {
     embed.addFields({
       name: '약점',
@@ -90,7 +91,7 @@ function createDigimonEmbed(digimonName, digimonData) {
       inline: true
     });
   }
-  
+
   // 필드
   if (digimonData.fields && digimonData.fields.length > 0) {
     embed.addFields({
@@ -99,20 +100,20 @@ function createDigimonEmbed(digimonName, digimonData) {
       inline: false
     });
   }
-  
+
   // 스킬 정보
   if (digimonData.skills && digimonData.skills.length > 0) {
-    const skillsText = digimonData.skills.map(skill => 
+    const skillsText = digimonData.skills.map(skill =>
       `**${skill.name}** (${skill.hits}타, ${skill.range}, ${skill.attribute}, ${skill.target_count})`
     ).join('\n');
-    
+
     embed.addFields({
       name: '스킬',
       value: skillsText,
       inline: false
     });
   }
-  
+
   return embed;
 }
 
@@ -210,9 +211,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
         
-        const fields = fieldResult.data.fields;
-        if (fields && fields.length > 0) {
-          await interaction.reply(`**${fieldResult.name}**의 필드\n${fields.join(', ')}`);
+        const digimonFields = fieldResult.data.fields;
+        if (digimonFields && digimonFields.length > 0) {
+          await interaction.reply(`**${fieldResult.name}**의 필드\n${digimonFields.join(', ')}`);
         } else {
           await interaction.reply(`**${fieldResult.name}**의 필드 정보가 없습니다.`);
         }
@@ -220,35 +221,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       case '도움말':
         const helpEmbed = new EmbedBuilder()
-          .setTitle('🦖 디지몬 봇 도움말')
+          .setTitle('🦖 DSRWIKI 봇')
           .setColor(0x0099ff)
           .setDescription('다음 명령어들을 사용할 수 있습니다:')
-                     .addFields(
-             { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
-             { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
-             { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
-             { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
-             { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
-             { name: '/도움말', value: '이 도움말을 보여줍니다', inline: false }
-           )
+          .addFields(
+            { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
+            { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
+            { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
+            { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
+            { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
+            { name: '/도움말', value: '이 도움말을 보여줍니다', inline: false }
+          )
           .setFooter({ text: '예시: /디지몬 가지몬, /약점 가지몬' });
         
         await interaction.reply({ embeds: [helpEmbed] });
         break;
     }
   } catch (error) {
-    console.error('명령어 처리 중 오류 발생:', error);
-    await interaction.reply({ content: '명령어 처리 중 오류가 발생했습니다.', ephemeral: true });
+    console.error('명령어 처리 중 오류:', error);
+    await interaction.reply('명령어 처리 중 오류가 발생했습니다.');
   }
 });
 
 // 기존 메시지 명령어도 지원 (하위 호환성)
 client.on(Events.MessageCreate, async (message) => {
-  // 봇 메시지 무시
+  // 봇 메시지는 무시
   if (message.author.bot) return;
-  
+
   const content = message.content.toLowerCase();
-  
+
   // 디지몬 정보 검색 명령어
   if (content.startsWith('!디지몬') || content.startsWith('!digimon')) {
     const query = message.content.slice(content.startsWith('!디지몬') ? 4 : 9).trim();
@@ -290,12 +291,12 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
     
-                         const weakness = result.data.weaknesses;
-         if (weakness) {
-           message.reply(`**${result.name}**의 약점\n${weakness.attribute} / ${weakness.effect}`);
-         } else {
-           message.reply(`**${result.name}**의 약점 정보가 없습니다.`);
-         }
+    const weakness = result.data.weaknesses;
+    if (weakness) {
+      message.reply(`**${result.name}**의 약점\n${weakness.attribute} / ${weakness.effect}`);
+    } else {
+      message.reply(`**${result.name}**의 약점 정보가 없습니다.`);
+    }
   }
   
   else if (content.startsWith('!강점') || content.startsWith('!strength')) {
@@ -313,12 +314,12 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
     
-                         const strength = result.data.strengths;
-         if (strength) {
-           message.reply(`**${result.name}**의 강점\n${strength.attribute} / ${strength.effect}`);
-         } else {
-           message.reply(`**${result.name}**의 강점 정보가 없습니다.`);
-         }
+    const strength = result.data.strengths;
+    if (strength) {
+      message.reply(`**${result.name}**의 강점\n${strength.attribute} / ${strength.effect}`);
+    } else {
+      message.reply(`**${result.name}**의 강점 정보가 없습니다.`);
+    }
   }
   
   else if (content.startsWith('!스탯') || content.startsWith('!stats')) {
@@ -336,49 +337,50 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
     
-                                                                                                                                                           const stats = result.data.stats;
-           const statsText = `**${result.name}**의 스탯\nHP: ${stats.hp}\nSP: ${stats.sp}\nSTR: ${stats.STR}\nINT: ${stats.INT}\nDEF: ${stats.DEF}\nRES: ${stats.RES}\nSPD: ${stats.SPD}`;
-           
-           message.reply(statsText);
-   }
-   
-   // 필드 명령어
-   else if (content.startsWith('!필드') || content.startsWith('!field')) {
-     const query = message.content.slice(content.startsWith('!필드') ? 3 : 7).trim();
-     
-     if (!query) {
-       message.reply('사용법: `!필드 [디지몬 이름]` 또는 `!field [디지몬 이름]`');
-       return;
-     }
-     
-     const result = searchDigimon(query);
-     
-     if (!result || result.suggestions) {
-       message.reply(`'${query}'에 대한 디지몬을 찾을 수 없습니다.`);
-       return;
-     }
-     
-     const digimonFields = result.data.fields;
-     if (digimonFields && digimonFields.length > 0) {
-       message.reply(`**${result.name}**의 필드\n${digimonFields.join(', ')}`);
-     } else {
-       message.reply(`**${result.name}**의 필드 정보가 없습니다.`);
-     }
-   }
-   
-   // 도움말
+    const stats = result.data.stats;
+    const statsText = `**${result.name}**의 스탯\nHP: ${stats.hp}\nSP: ${stats.sp}\nSTR: ${stats.STR}\nINT: ${stats.INT}\nDEF: ${stats.DEF}\nRES: ${stats.RES}\nSPD: ${stats.SPD}`;
+    
+    message.reply(statsText);
+  }
+  
+  // 필드 명령어
+  else if (content.startsWith('!필드') || content.startsWith('!field')) {
+    const query = message.content.slice(content.startsWith('!필드') ? 3 : 7).trim();
+    
+    if (!query) {
+      message.reply('사용법: `!필드 [디지몬 이름]` 또는 `!field [디지몬 이름]`');
+      return;
+    }
+    
+    const result = searchDigimon(query);
+    
+    if (!result || result.suggestions) {
+      message.reply(`'${query}'에 대한 디지몬을 찾을 수 없습니다.`);
+      return;
+    }
+    
+    const digimonFields = result.data.fields;
+    if (digimonFields && digimonFields.length > 0) {
+      message.reply(`**${result.name}**의 필드\n${digimonFields.join(', ')}`);
+    } else {
+      message.reply(`**${result.name}**의 필드 정보가 없습니다.`);
+    }
+  }
+  
+  // 도움말
   else if (content === '!도움말' || content === '!help') {
     const helpEmbed = new EmbedBuilder()
       .setTitle('🦖 DSRWIKI 봇')
       .setColor(0x0099ff)
       .setDescription('다음 명령어들을 사용할 수 있습니다:')
-             .addFields(
-         { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
-         { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
-         { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
-         { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
-         { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
-       )
+      .addFields(
+        { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
+        { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
+        { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
+        { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
+        { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
+        { name: '/도움말', value: '이 도움말을 보여줍니다', inline: false }
+      )
       .setFooter({ text: '예시: /디지몬 가지몬, /약점 가지몬' });
     
     message.reply({ embeds: [helpEmbed] });
