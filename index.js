@@ -119,6 +119,10 @@ function createDigimonEmbed(digimonName, digimonData) {
 // 봇이 준비되었을 때
 client.once(Events.ClientReady, () => {
   console.log(`${client.user.tag} 봇이 준비되었습니다!`);
+  
+  // 봇 상태 설정 (프로필에 표시됨)
+  client.user.setActivity('/도움말 | 디지몬 정보 봇', { type: 'PLAYING' });
+  
   loadDigimonData();
 });
 
@@ -197,18 +201,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply(statsText);
         break;
 
+      case '필드':
+        const fieldName = interaction.options.getString('이름');
+        const fieldResult = searchDigimon(fieldName);
+        
+        if (!fieldResult || fieldResult.suggestions) {
+          await interaction.reply(`'${fieldName}'에 대한 디지몬을 찾을 수 없습니다.`);
+          return;
+        }
+        
+        const fields = fieldResult.data.fields;
+        if (fields && fields.length > 0) {
+          await interaction.reply(`**${fieldResult.name}**의 필드\n${fields.join(', ')}`);
+        } else {
+          await interaction.reply(`**${fieldResult.name}**의 필드 정보가 없습니다.`);
+        }
+        break;
+
       case '도움말':
         const helpEmbed = new EmbedBuilder()
           .setTitle('🦖 디지몬 봇 도움말')
           .setColor(0x0099ff)
           .setDescription('다음 명령어들을 사용할 수 있습니다:')
-          .addFields(
-            { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
-            { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
-            { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
-            { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
-            { name: '/도움말', value: '이 도움말을 보여줍니다', inline: false }
-          )
+                     .addFields(
+             { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
+             { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
+             { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
+             { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
+             { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
+             { name: '/도움말', value: '이 도움말을 보여줍니다', inline: false }
+           )
           .setFooter({ text: '예시: /디지몬 가지몬, /약점 가지몬' });
         
         await interaction.reply({ embeds: [helpEmbed] });
@@ -314,26 +336,50 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
     
-                                                   const stats = result.data.stats;
-          const statsText = `**${result.name}**의 스탯\nHP: ${stats.hp}\nSP: ${stats.sp}\nSTR: ${stats.STR}\nINT: ${stats.INT}\nDEF: ${stats.DEF}\nRES: ${stats.RES}\nSPD: ${stats.SPD}`;
-          
-          message.reply(statsText);
-  }
-  
-  // 도움말
+                                                                                                                                                           const stats = result.data.stats;
+           const statsText = `**${result.name}**의 스탯\nHP: ${stats.hp}\nSP: ${stats.sp}\nSTR: ${stats.STR}\nINT: ${stats.INT}\nDEF: ${stats.DEF}\nRES: ${stats.RES}\nSPD: ${stats.SPD}`;
+           
+           message.reply(statsText);
+   }
+   
+   // 필드 명령어
+   else if (content.startsWith('!필드') || content.startsWith('!field')) {
+     const query = message.content.slice(content.startsWith('!필드') ? 3 : 7).trim();
+     
+     if (!query) {
+       message.reply('사용법: `!필드 [디지몬 이름]` 또는 `!field [디지몬 이름]`');
+       return;
+     }
+     
+     const result = searchDigimon(query);
+     
+     if (!result || result.suggestions) {
+       message.reply(`'${query}'에 대한 디지몬을 찾을 수 없습니다.`);
+       return;
+     }
+     
+     const digimonFields = result.data.fields;
+     if (digimonFields && digimonFields.length > 0) {
+       message.reply(`**${result.name}**의 필드\n${digimonFields.join(', ')}`);
+     } else {
+       message.reply(`**${result.name}**의 필드 정보가 없습니다.`);
+     }
+   }
+   
+   // 도움말
   else if (content === '!도움말' || content === '!help') {
     const helpEmbed = new EmbedBuilder()
-      .setTitle('🦖 디지몬 봇 도움말')
+      .setTitle('🦖 DSRWIKI 봇')
       .setColor(0x0099ff)
       .setDescription('다음 명령어들을 사용할 수 있습니다:')
-      .addFields(
-        { name: '!디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
-        { name: '!약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
-        { name: '!강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
-        { name: '!스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
-        { name: '!도움말', value: '이 도움말을 보여줍니다', inline: false }
-      )
-      .setFooter({ text: '예시: !디지몬 가지몬, !약점 가지몬' });
+             .addFields(
+         { name: '/디지몬 [이름]', value: '디지몬의 전체 정보를 보여줍니다', inline: false },
+         { name: '/약점 [이름]', value: '디지몬의 약점을 보여줍니다', inline: false },
+         { name: '/강점 [이름]', value: '디지몬의 강점을 보여줍니다', inline: false },
+         { name: '/스탯 [이름]', value: '디지몬의 스탯을 보여줍니다', inline: false },
+         { name: '/필드 [이름]', value: '디지몬의 필드를 보여줍니다', inline: false },
+       )
+      .setFooter({ text: '예시: /디지몬 가지몬, /약점 가지몬' });
     
     message.reply({ embeds: [helpEmbed] });
   }
