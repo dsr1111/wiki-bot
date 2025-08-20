@@ -19,7 +19,20 @@ async function loadDigimonData() {
   try {
     const response = await axios.get(process.env.DIGIMON_DATA_URL);
     digimonData = response.data;
+    
+    // 데이터 구조 확인 및 로그
     console.log('디지몬 데이터 로드 완료!');
+    console.log('데이터 타입:', typeof digimonData);
+    console.log('데이터 길이/키 개수:', Array.isArray(digimonData) ? digimonData.length : Object.keys(digimonData).length);
+    
+    if (Array.isArray(digimonData) && digimonData.length > 0) {
+      console.log('첫 번째 항목 예시:', JSON.stringify(digimonData[0], null, 2).substring(0, 200) + '...');
+    } else if (!Array.isArray(digimonData) && Object.keys(digimonData).length > 0) {
+      const firstKey = Object.keys(digimonData)[0];
+      console.log('첫 번째 키 예시:', firstKey);
+      console.log('첫 번째 항목 예시:', JSON.stringify(digimonData[firstKey], null, 2).substring(0, 200) + '...');
+    }
+    
   } catch (error) {
     console.error('디지몬 데이터 로드 실패:', error.message);
   }
@@ -28,22 +41,45 @@ async function loadDigimonData() {
 // 디지몬 검색 함수
 function searchDigimon(query) {
   const searchQuery = query.toLowerCase();
-  const exactMatch = digimonData.find(digimon => 
-    digimon.name.toLowerCase() === searchQuery
-  );
   
-  if (exactMatch) {
-    return { name: exactMatch.name, data: exactMatch };
-  }
-  
-  const partialMatches = digimonData.filter(digimon =>
-    digimon.name.toLowerCase().includes(searchQuery)
-  );
-  
-  if (partialMatches.length > 0) {
-    return {
-      suggestions: partialMatches.slice(0, 10).map(d => d.name)
-    };
+  // 데이터가 배열인지 객체인지 확인
+  if (Array.isArray(digimonData)) {
+    // 배열 형태인 경우
+    const exactMatch = digimonData.find(digimon => 
+      digimon.name.toLowerCase() === searchQuery
+    );
+    
+    if (exactMatch) {
+      return { name: exactMatch.name, data: exactMatch };
+    }
+    
+    const partialMatches = digimonData.filter(digimon =>
+      digimon.name.toLowerCase().includes(searchQuery)
+    );
+    
+    if (partialMatches.length > 0) {
+      return {
+        suggestions: partialMatches.slice(0, 10).map(d => d.name)
+      };
+    }
+  } else {
+    // 객체 형태인 경우
+    const exactMatch = digimonData[query];
+    if (exactMatch) {
+      return { name: query, data: exactMatch };
+    }
+    
+    const partialMatches = Object.keys(digimonData).filter(name => 
+      name.toLowerCase().includes(searchQuery)
+    );
+    
+    if (partialMatches.length === 1) {
+      return { name: partialMatches[0], data: digimonData[partialMatches[0]] };
+    } else if (partialMatches.length > 1) {
+      return {
+        suggestions: partialMatches.slice(0, 10)
+      };
+    }
   }
   
   return null;
@@ -57,23 +93,33 @@ function createDigimonEmbed(digimonName, digimonData) {
     .setTimestamp();
 
   // 기본 정보
-  embed.addFields(
-    { name: '진화 단계', value: digimonData.evolution_stage, inline: true },
-    { name: '타입', value: digimonData.type, inline: true },
-    { name: '레벨', value: digimonData.stats.level.toString(), inline: true }
-  );
+  if (digimonData.evolution_stage) {
+    embed.addFields({ name: '진화 단계', value: digimonData.evolution_stage, inline: true });
+  }
+  if (digimonData.type) {
+    embed.addFields({ name: '타입', value: digimonData.type, inline: true });
+  }
+  if (digimonData.stats && digimonData.stats.level) {
+    embed.addFields({ name: '레벨', value: digimonData.stats.level.toString(), inline: true });
+  }
 
   // 스탯 정보
-  const stats = digimonData.stats;
-  embed.addFields(
-    { name: 'HP', value: stats.hp.toString(), inline: true },
-    { name: 'SP', value: stats.sp.toString(), inline: true },
-    { name: 'STR', value: stats.STR.toString(), inline: true },
-    { name: 'INT', value: stats.INT.toString(), inline: true },
-    { name: 'DEF', value: stats.DEF.toString(), inline: true },
-    { name: 'RES', value: stats.RES.toString(), inline: true },
-    { name: 'SPD', value: stats.SPD.toString(), inline: true }
-  );
+  if (digimonData.stats) {
+    const stats = digimonData.stats;
+    const statsFields = [];
+    
+    if (stats.hp !== undefined) statsFields.push({ name: 'HP', value: stats.hp.toString(), inline: true });
+    if (stats.sp !== undefined) statsFields.push({ name: 'SP', value: stats.sp.toString(), inline: true });
+    if (stats.STR !== undefined) statsFields.push({ name: 'STR', value: stats.STR.toString(), inline: true });
+    if (stats.INT !== undefined) statsFields.push({ name: 'INT', value: stats.INT.toString(), inline: true });
+    if (stats.DEF !== undefined) statsFields.push({ name: 'DEF', value: stats.DEF.toString(), inline: true });
+    if (stats.RES !== undefined) statsFields.push({ name: 'RES', value: stats.RES.toString(), inline: true });
+    if (stats.SPD !== undefined) statsFields.push({ name: 'SPD', value: stats.SPD.toString(), inline: true });
+    
+    if (statsFields.length > 0) {
+      embed.addFields(statsFields);
+    }
+  }
 
   // 강점과 약점
   if (digimonData.strengths) {
@@ -221,7 +267,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       case '도움말':
         const helpEmbed = new EmbedBuilder()
-          .setTitle('🦖 DSRWIKI 봇')
+          .setTitle('DSRWIKI 봇')
           .setColor(0x0099ff)
           .setDescription('다음 명령어들을 사용할 수 있습니다:')
           .addFields(
